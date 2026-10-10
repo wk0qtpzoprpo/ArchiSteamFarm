@@ -104,6 +104,9 @@ LABEL maintainer="Fork build <asf-docker-workflow>" \
 
 EXPOSE 1242
 COPY --from=build-dotnet --link /app/out /asf
+# 把默认 IPC.config 打进镜像（Render 等无卷环境也能在 0.0.0.0:1242 监听；
+# 本地 compose 用 bind 卷挂载 ./config 时会覆盖它，工作流已自带该文件）
+COPY --link config/IPC.config /app/config/IPC.config
 
 RUN <<EOF
     set -eu
