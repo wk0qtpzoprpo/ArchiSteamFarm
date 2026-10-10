@@ -1,0 +1,29 @@
+name: asf
+
+services:
+  asf:
+    build:
+      context: .          # 仓库根目录（本文件与 Dockerfile 放在 fork 仓库根目录下）
+      dockerfile: Dockerfile
+      args:
+        CONFIGURATION: Release
+    # 已配置 GitHub Actions 自动构建后，可改用 CI 推送的镜像（去掉 build 段并取消下行注释）：
+    # image: ghcr.io/wk0qtpzoprpo/archisteamfarm:main
+    image: archisteamfarm:local
+    container_name: asf
+    restart: unless-stopped
+    environment:
+      # 必填：IPC 密码（WebUI / API 认证）。由 docker-entrypoint.sh 注入 /app/config/ASF.json
+      - ASF_IPC_PASSWORD=${ASF_IPC_PASSWORD:?请在 .env 中设置 ASF_IPC_PASSWORD}
+      # 可选：ASF 自身保留的环境变量（按需取消注释）
+      # - ASF_ARGS=--no-restart
+      # - ASF_NETWORK_GROUP=my-group
+      # - ASF_UID=1000
+      - TZ=${TZ:-Asia/Shanghai}
+    ports:
+      # 1242 端口访问 WebUI；如需仅本机访问改为 "127.0.0.1:1242:1242"
+      - "1242:1242"
+    volumes:
+      - ./config:/app/config   # 内含 IPC.config（Kestrel 监听 0.0.0.0:1242），Bot 配置也放这里
+      - ./logs:/app/logs
+      - ./plugins:/app/plugins # 可选：自定义插件

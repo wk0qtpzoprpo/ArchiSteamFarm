@@ -1,3 +1,14 @@
+# syntax=docker/dockerfile:1
+# =====================================================================
+# ArchiSteamFarm 自建 Docker 镜像（基于官方 Dockerfile 扩展）
+# 来源：https://github.com/JustArchiNET/ArchiSteamFarm/blob/main/Dockerfile
+# 本版本相对官方新增两点：
+#   1) 运行时安装 jq，用于把 compose 传入的 ASF_IPC_PASSWORD 环境变量
+#      注入 /app/config/ASF.json（IPC 密码，IPCPasswordFormat=0 明文）
+#   2) 自定义入口 docker-entrypoint.sh：先注入密码，再 exec 启动 ASF
+# 注意：构建需要 BuildKit（Docker 23+ / compose v2 默认满足）
+# =====================================================================
+
 ARG IMAGESUFFIX
 
 FROM --platform=$BUILDPLATFORM node:lts${IMAGESUFFIX} AS build-node
@@ -34,6 +45,7 @@ COPY --link Directory.Build.props Directory.Build.props
 COPY --link Directory.Packages.props Directory.Packages.props
 COPY --link LICENSE.txt LICENSE.txt
 
+# ASF_PRIVATE_SNK / STEAM_TOKEN_DUMPER_TOKEN 为可选 secret，本地构建可省略（官方 CI 亦如此）
 RUN --mount=type=secret,id=ASF_PRIVATE_SNK --mount=type=secret,id=STEAM_TOKEN_DUMPER_TOKEN <<EOF
     set -eu
 
@@ -84,14 +96,10 @@ ENV DOTNET_CLI_TELEMETRY_OPTOUT=true
 ENV DOTNET_EnableDiagnostics=0
 ENV DOTNET_NOLOGO=true
 
-LABEL maintainer="JustArchi <JustArchi@JustArchi.net>" \
-    org.opencontainers.image.authors="JustArchi <JustArchi@JustArchi.net>" \
-    org.opencontainers.image.url="https://github.com/JustArchiNET/ArchiSteamFarm/wiki/Docker" \
-    org.opencontainers.image.documentation="https://github.com/JustArchiNET/ArchiSteamFarm/wiki" \
-    org.opencontainers.image.source="https://github.com/JustArchiNET/ArchiSteamFarm" \
-    org.opencontainers.image.vendor="JustArchiNET" \
+LABEL maintainer="Fork build <asf-docker-workflow>" \
+    org.opencontainers.image.source="https://github.com/wk0qtpzoprpo/ArchiSteamFarm" \
     org.opencontainers.image.licenses="Apache-2.0" \
-    org.opencontainers.image.title="ArchiSteamFarm" \
+    org.opencontainers.image.title="ArchiSteamFarm (custom)" \
     org.opencontainers.image.description="C# application with primary purpose of idling Steam cards from multiple accounts simultaneously"
 
 EXPOSE 1242
@@ -99,6 +107,10 @@ COPY --from=build-dotnet --link /app/out /asf
 
 RUN <<EOF
     set -eu
+
+    apt-get update
+    apt-get install -y --no-install-recommends jq
+    rm -rf /var/lib/apt/lists/*
 
     mkdir -p "$ASF_PATH"
 
@@ -112,7 +124,11 @@ RUN <<EOF
     ln -s /asf/ArchiSteamFarm.sh /usr/bin/ArchiSteamFarm
 EOF
 
+# 自定义入口：先注入 ASF_IPC_PASSWORD 到 ASF.json，再启动 ASF
+COPY --chmod=755 docker-entrypoint.sh /usr/bin/docker-entrypoint.sh
+
 WORKDIR /app
 VOLUME ["/app/config", "/app/logs"]
 HEALTHCHECK CMD ["pidof", "-q", "dotnet"]
-ENTRYPOINT ["ArchiSteamFarm", "--no-restart"]
+ENTRYPOINT ["/usr/bin/docker-entrypoint.sh"]
+CMD ["--no-restart"]
