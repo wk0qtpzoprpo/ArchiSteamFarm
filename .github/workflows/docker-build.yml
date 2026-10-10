@@ -52,7 +52,7 @@ jobs:
 
       - name: 计算镜像名与标签
         id: meta
-        shell: sh
+        shell: bash
         run: |
           set -eu
 
